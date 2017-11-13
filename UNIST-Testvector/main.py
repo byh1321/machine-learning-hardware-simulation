@@ -1,3 +1,5 @@
+#Original Source : https://github.com/pytorch/examples/blob/master/mnist/main.py
+
 from __future__ import print_function
 import argparse
 import torch
@@ -71,55 +73,13 @@ class Net(nn.Module):
 		self.fc2 = nn.Linear(50, 10)
 
 	def forward(self, x):
-		x = self.conv1(x)
-		if args.noiselayer == 0:
-			x = gaussian(x)
-
-		x = F.max_pool2d(x,2)
-		if args.noiselayer == 1:
-			x = gaussian(x)
-
-		x = F.relu(x)
-		if args.noiselayer == 2:
-			x = gaussian(x)
-			
-		x = self.conv2(x)
-		if args.noiselayer == 3:
-			x = gaussian(x)
-
-		x = self.conv2_drop(x)
-		if args.noiselayer == 4:
-			x = gaussian(x)
-			
-		x = F.max_pool2d(x,2)
-		if args.noiselayer == 5:
-			x = gaussian(x)
-
-		x = F.relu(x)
-		if args.noiselayer == 6:
-			x = gaussian(x)
-
-		x = x.view(-1, 320)
-		if args.noiselayer == 7:
-			x = gaussian(x)
-			
-		x = self.fc1(x)
-		if args.noiselayer == 8:
-			x = gaussian(x)
-
-		x = F.relu(x)
-		if args.noiselayer == 9:
-			x = gaussian(x)
-
-		x = F.dropout(x, training=self.training)
-		if args.noiselayer == 10:
-			x = gaussian(x)
-
-		x = self.fc2(x)
-		if args.noiselayer == 11:
-			x = gaussian(x)
-
-		return F.log_softmax(x)
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
+        x = x.view(-1, 320)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
+        x = self.fc2(x)
+        return F.log_softmax(x)
 
 model = Net()
 #noise = DynamicGNoise(10,10)

@@ -1,3 +1,4 @@
+#Original Source : https://github.com/pytorch/examples/blob/master/mnist/main.py
 from __future__ import print_function
 import argparse
 import torch
@@ -176,11 +177,9 @@ is_testing = 0
 if args.load == 0:
 	train(epoch)
 elif args.load == 1:
-	model = torch.load('test.dat')
+	model = torch.load('test1.dat')
 elif args.load == 2:
 	model = torch.load('test2.dat')
-elif args.load == 3:
-	model = torch.load('test3.dat')
 is_testing = 1
 test()
 f.close()

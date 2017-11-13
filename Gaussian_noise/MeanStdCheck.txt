@@ -1,0 +1,131 @@
+Target layer == 0
+Mean :  Variable containing:
+1.00000e-03 *
+  5.8897
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 1.0077
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 1
+Mean :  Variable containing:
+-0.5742
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 2.2270
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 2
+Mean :  Variable containing:
+ 0.1065
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 1.9680
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 3
+Mean :  Variable containing:
+ 0.7197
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 1.2231
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 4
+Mean :  Variable containing:
+-2.1690
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 3.2727
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 5
+Mean :  Variable containing:
+-2.1690
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 3.2727
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 6
+Mean :  Variable containing:
+-0.3112
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 2.8249
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 7
+Mean :  Variable containing:
+ 0.9627
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 1.5202
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 8
+Mean :  Variable containing:
+ 0.9627
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 1.5202
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 9
+Mean :  Variable containing:
+-1.4715
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 5.6617
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 10
+Mean :  Variable containing:
+ 1.8778
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 2.7431
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 11
+Mean :  Variable containing:
+ 1.8778
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 2.7431
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
+Target layer == 12
+Mean :  Variable containing:
+-0.2726
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+ sigma :  Variable containing:
+ 11.3147
+[torch.cuda.FloatTensor of size 1 (GPU 0)]
+
+
+
