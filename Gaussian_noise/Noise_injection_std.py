@@ -1,5 +1,4 @@
 #Original Source : https://github.com/pytorch/examples/blob/master/mnist/main.py
-
 from __future__ import print_function
 import argparse
 import torch
@@ -31,8 +30,6 @@ parser.add_argument('--noiselayer', type=int, default=0.2, metavar='N',
 					help='choose which noise layer to use')
 parser.add_argument('--load', type=int, default=0, metavar='N',
 					help='load trained data from test.dat file')
-parser.add_argument('--filename', default="output.txt", metavar='N',
-                    help='output filename')
 
 
 args = parser.parse_args()
@@ -58,18 +55,12 @@ test_loader = torch.utils.data.DataLoader(
 				   ])),
 	batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-'''def gaussian(ins, stddev=args.std):
+def gaussian(ins):
 	global is_testing
+	std = torch.std(ins)
 	if is_testing:
-		return ins + Variable(torch.randn(ins.size()).cuda() * stddev)
-	return ins'''
-
-def print_feature(input, filename):
-	f = open(filename, 'w+')
-	for i in input:
-		for j in i:
-			print(j, file=f)
-	f.close()
+		return ins + Variable(torch.randn(ins.size()).cuda() * std.data)
+	return ins
 
 class Net(nn.Module):
 	def __init__(self):
@@ -82,43 +73,54 @@ class Net(nn.Module):
 
 	def forward(self, x):
 		x = self.conv1(x)
+		if args.noiselayer == 0:
+			x = gaussian(x)
+
 		x = F.max_pool2d(x,2)
+		if args.noiselayer == 1:
+			x = gaussian(x)
+
 		x = F.relu(x)
-		
+		if args.noiselayer == 2:
+			x = gaussian(x)
+			
 		x = self.conv2(x)
+		if args.noiselayer == 3:
+			x = gaussian(x)
+
 		x = self.conv2_drop(x)
-		x = F.max_pool2d(x, 2)
+		if args.noiselayer == 4:
+			x = gaussian(x)
+			
+		x = F.max_pool2d(x,2)
+		if args.noiselayer == 5:
+			x = gaussian(x)
+
 		x = F.relu(x)
+		if args.noiselayer == 6:
+			x = gaussian(x)
 
 		x = x.view(-1, 320)
-		
+		if args.noiselayer == 7:
+			x = gaussian(x)
+			
 		x = self.fc1(x)
+		if args.noiselayer == 8:
+			x = gaussian(x)
+
 		x = F.relu(x)
+		if args.noiselayer == 9:
+			x = gaussian(x)
 
 		x = F.dropout(x, training=self.training)
+		if args.noiselayer == 10:
+			x = gaussian(x)
+
 		x = self.fc2(x)
+		if args.noiselayer == 11:
+			x = gaussian(x)
+
 		return F.log_softmax(x)
-
-	def extract_weight(self):
-		f = open('conv1_param.txt','w')
-		for i in self.conv1.parameters():
-			print(i,file = f)
-		f.close()
-		f = open('conv2_param.txt','w')
-		for i in self.conv2.parameters():
-			print(i,file = f)
-		f.close()
-		f = open('fc1_param.txt','w')
-		for i in self.fc1.parameters():
-			for j in i:
-				print(j,file = f)
-		f.close()
-		f = open('fc2_param.txt','w')
-		for i in self.fc2.parameters():
-			for j in i:
-				print(j,file = f)
-		f.close()
-
 
 model = Net()
 #noise = DynamicGNoise(10,10)
@@ -126,9 +128,24 @@ model = Net()
 
 if args.cuda:
 	model.cuda()
-	#model = torch.nn.DataParallel(model, device_ids=[5])
-	#cudnn.benchmark = True
+
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+
+def train(epoch):
+	model.train()
+	for batch_idx, (data, target) in enumerate(train_loader):
+		if args.cuda:
+			data, target = data.cuda(), target.cuda()
+		data, target = Variable(data), Variable(target)
+		optimizer.zero_grad()
+		output = model(data)
+		loss = F.nll_loss(output, target)
+		loss.backward()
+		optimizer.step()
+		if batch_idx % args.log_interval == 0:
+			print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+				epoch, batch_idx * len(data), len(train_loader.dataset),
+				100. * batch_idx / len(train_loader), loss.data[0]))
 
 def test():
 	model.eval()
@@ -144,21 +161,25 @@ def test():
 		correct += pred.eq(target.data.view_as(pred)).cpu().sum()
 
 	test_loss /= len(test_loader.dataset)
-	#f = open("record1.txt", 'a+')
-	print('{}'.format(correct), end='\t')
-	#print('{}'.format(correct), end='\t',file = f)
-	#f.close()
+#	print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+#		test_loss, correct, len(test_loader.dataset),
+#		100. * correct / len(test_loader.dataset)))
+	f = open("noise_injection_std_result1.txt", 'a+')
+	print('{}'.format(correct), end='\t',file = f)
+	#f.write(str(correct),end='\t')
+	f.close()
 
 
 #for epoch in range(1, args.epochs + 1):
 global is_testing
+f = open('record1.txt', 'a+')
 is_testing = 0
-if args.load == 1:
+if args.load == 0:
+	train(epoch)
+elif args.load == 1:
 	model = torch.load('test1.dat')
 elif args.load == 2:
 	model = torch.load('test2.dat')
-elif args.load == 3:
-	model = torch.load('test3.dat')
 is_testing = 1
 test()
-model.extract_weight()
+f.close()

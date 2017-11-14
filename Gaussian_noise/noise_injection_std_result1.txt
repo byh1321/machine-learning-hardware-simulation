@@ -1,0 +1,39 @@
+Noise layer == 0
+8184	7874	
+
+Noise layer == 1
+9309	9266	
+
+Noise layer == 2
+9542	9571	
+
+Noise layer == 3
+9257	9280	
+
+Noise layer == 4
+9257	9280	
+
+Noise layer == 5
+9523	9475	
+
+Noise layer == 6
+9745	9736	
+
+Noise layer == 7
+9745	9736	
+
+Noise layer == 8
+9300	9280	
+
+Noise layer == 9
+9351	9366	
+
+Noise layer == 10
+9351	9366	
+
+Noise layer == 11
+6174	6186	
+
+Noise layer == 12
+9920	9921	
+
