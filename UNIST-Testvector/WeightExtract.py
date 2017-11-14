@@ -29,10 +29,10 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N',
 					help='how many batches to wait before logging training status')
 parser.add_argument('--noiselayer', type=int, default=0.2, metavar='N',
 					help='choose which noise layer to use')
-parser.add_argument('--std', type=int, default=1, metavar='N',
-					help='change standard diviation of noise layer')
 parser.add_argument('--load', type=int, default=0, metavar='N',
 					help='load trained data from test.dat file')
+parser.add_argument('--filename', default="output.txt", metavar='N',
+                    help='output filename')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -57,11 +57,23 @@ test_loader = torch.utils.data.DataLoader(
 				   ])),
 	batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-def gaussian(ins, stddev=args.std):
+'''def gaussian(ins, stddev=args.std):
 	global is_testing
 	if is_testing:
 		return ins + Variable(torch.randn(ins.size()).cuda() * stddev)
-	return ins
+	return ins'''
+
+'''def printweight():
+	print("saving binary of weights of CONV1 \n")
+		for child in net.children():
+			for param in child.layer[0].parameters():
+				for i in range(0, 32):
+					for j in range(0, 1):
+						for k in range(0, 5):
+							for l in range(0, 5):
+								conv_w1_b = binary_conversion(param.data[i][j][k][l])
+								f_conv_w1.write("%s \n" % conv_w1_b)
+				f_conv_w1.close()'''
 
 class Net(nn.Module):
 	def __init__(self):
@@ -73,13 +85,34 @@ class Net(nn.Module):
 		self.fc2 = nn.Linear(50, 10)
 
 	def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, training=self.training)
-        x = self.fc2(x)
-        return F.log_softmax(x)
+		x = F.relu(F.max_pool2d(self.conv1(x), 2))
+		x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
+		print(x.size())
+		x = x.view(-1, 320)
+		print(x.size())
+		x = F.relu(self.fc1(x))
+		x = F.dropout(x, training=self.training)
+		x = self.fc2(x)
+		return F.log_softmax(x)
+
+	def extract_weight(self):
+		f = open('conv1_param.txt','w')
+		for i in self.conv1.parameters():
+			print(i,file = f)
+		f.close()
+		f = open('conv2_param.txt','w')
+		for i in self.conv2.parameters():
+			print(i,file = f)
+		f.close()
+		f = open('fc1_param.txt','w')
+		for i in self.fc1.parameters():
+			print(i,file = f)
+		f.close()
+		f = open('fc2_param.txt','w')
+		for i in self.fc2.parameters():
+			print(i,file = f)
+		f.close()
+
 
 model = Net()
 #noise = DynamicGNoise(10,10)
@@ -113,14 +146,13 @@ def test():
 global is_testing
 #f = open('record1.txt', 'a+')
 is_testing = 0
-if args.load == 0:
-	train(epoch)
-elif args.load == 1:
-	model = torch.load('test.dat')
+if args.load == 1:
+	model = torch.load('test1.dat')
 elif args.load == 2:
 	model = torch.load('test2.dat')
 elif args.load == 3:
 	model = torch.load('test3.dat')
 is_testing = 1
 test()
+#model.extract_weight()
 #f.close()
