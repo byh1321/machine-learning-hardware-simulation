@@ -63,17 +63,12 @@ test_loader = torch.utils.data.DataLoader(
 		return ins + Variable(torch.randn(ins.size()).cuda() * stddev)
 	return ins'''
 
-'''def printweight():
-	print("saving binary of weights of CONV1 \n")
-		for child in net.children():
-			for param in child.layer[0].parameters():
-				for i in range(0, 32):
-					for j in range(0, 1):
-						for k in range(0, 5):
-							for l in range(0, 5):
-								conv_w1_b = binary_conversion(param.data[i][j][k][l])
-								f_conv_w1.write("%s \n" % conv_w1_b)
-				f_conv_w1.close()'''
+def print_feature(input, filename):
+	f = open(filename, 'w+')
+	for i in input:
+		for j in i:
+			print(j, file=f)
+	f.close()
 
 class Net(nn.Module):
 	def __init__(self):
@@ -85,12 +80,19 @@ class Net(nn.Module):
 		self.fc2 = nn.Linear(50, 10)
 
 	def forward(self, x):
-		x = F.relu(F.max_pool2d(self.conv1(x), 2))
-		x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-		print(x.size())
+		x = self.conv1(x)
+		x = F.max_pool2d(x,2)
+		x = F.relu(x)
+		
+		x = self.conv2(x)
+		x = self.conv2_drop(x)
+		x = F.relu(x,2)
+
 		x = x.view(-1, 320)
-		print(x.size())
-		x = F.relu(self.fc1(x))
+		
+		x = self.fc1(x)
+		x = F.relu(x)
+
 		x = F.dropout(x, training=self.training)
 		x = self.fc2(x)
 		return F.log_softmax(x)
@@ -106,11 +108,13 @@ class Net(nn.Module):
 		f.close()
 		f = open('fc1_param.txt','w')
 		for i in self.fc1.parameters():
-			print(i,file = f)
+			for j in i:
+				print(j,file = f)
 		f.close()
 		f = open('fc2_param.txt','w')
 		for i in self.fc2.parameters():
-			print(i,file = f)
+			for j in i:
+				print(j,file = f)
 		f.close()
 
 
@@ -138,13 +142,13 @@ def test():
 
 	test_loss /= len(test_loader.dataset)
 	#f = open("record1.txt", 'a+')
+	print('{}'.format(correct), end='\t')
 	#print('{}'.format(correct), end='\t',file = f)
 	#f.close()
 
 
 #for epoch in range(1, args.epochs + 1):
 global is_testing
-#f = open('record1.txt', 'a+')
 is_testing = 0
 if args.load == 1:
 	model = torch.load('test1.dat')
@@ -154,5 +158,4 @@ elif args.load == 3:
 	model = torch.load('test3.dat')
 is_testing = 1
 test()
-#model.extract_weight()
-#f.close()
+model.extract_weight()
