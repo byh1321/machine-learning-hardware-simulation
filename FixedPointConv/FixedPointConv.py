@@ -31,6 +31,10 @@ parser.add_argument('--std', type=int, default=1, metavar='N',
 					help='change standard diviation of noise layer')
 parser.add_argument('--load', type=int, default=0, metavar='N',
 					help='load trained data from test.dat file')
+parser.add_argument('--pprec', type=int, default=0, metavar='N',
+					help='parameter precision for layer weight')
+parser.add_argument('--aprec', type=int, default=0, metavar='N',
+					help='Arithmetic precision for internal arithmetic')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -40,7 +44,7 @@ if args.cuda:
 	torch.cuda.manual_seed(args.seed)
 
 
-kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+kwargs = {'num_workers': 8, 'pin_memory': True} if args.cuda else {}
 train_loader = torch.utils.data.DataLoader(
 	datasets.MNIST('../data', train=True, download=True,
 				   transform=transforms.Compose([
@@ -61,13 +65,69 @@ def gaussian(ins, stddev=args.std):
 		return ins + Variable(torch.randn(ins.size()).cuda() * stddev)
 	return ins
 
-def FixedPointConv(input, ins, outs, kerner_size):
-	output = torch.FloatTensor(10,10,10,10).zero_()
-	for i in output:
-		print(i)
-	return output
-#	for i in input:
-	
+def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0):
+	outputsize = int((input.size()[2]-kernel_size+2*padding)/stride + 1)
+	#print(outputsize)
+	#print(input.size())
+	#print(input.data()[0,0,0:2,0:2])
+	input.cuda()
+	weight, bias = layer.parameters()
+	weight.cuda()
+	bias.cuda()
+	output = torch.FloatTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
+	output = output.cuda()
+	#print(output.size())
+	#print(input.size()[0], 10, outputsize, outputsize)
+	#for i in range(0,input.size()[0]): #0 to 9999
+	for i in range(0,50):
+		for j in range(0,weight.size()[0]): # 0 to 9
+			for k in range(0,outputsize):
+				for l in range(0, outputsize):
+					a_1 = k*stride
+					a_2 = a_1 + kernel_size
+					b_1 = l*stride 
+					b_2 = b_1 + kernel_size
+					#if weight.size()[0] == 20:
+						#print(weight[j,:,:,:].size())
+						#print(input[i,:,a_1:a_2,b_1:b_2].size())
+					sum = 0
+					for m in range(0,weight.size()[1]):
+						#print(weight[j,m,:,:].size())
+						#print(input[i,m,a_1:a_2,b_1:b_2].size())
+						#if weight.size()[0] == 20:
+							#print(weight[j,m,:,:].size())
+							#print(input[i,m,a_1:a_2,b_1:b_2].size())
+						tmp = torch.mul(weight[j,m,:,:], input[i,m,a_1:a_2,b_1:b_2]).cuda()
+						tmp = tmp.view(-1,1)
+						sum = torch.add(torch.sum(tmp),sum).cuda()
+					#print(tmp.size())
+					#tmp = tmp.view(-1,1)
+					#tmp = torch.round(tmp / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+					#tmp = torch.sum(tmp).cuda()
+					output[i,j,k,l] = sum.data[0]
+					#output[i,j,k,l] = torch.add(output[i,j,k,l],bias.data[j])
+					#print(filter.size())
+					#tmp = torch.mul(bias[j], filter)
+					#tmp = tmp.view(1)
+					#print(tmp.size())
+					#output[i,j,k,l]
+				output[i,j,k,:] = torch.add(output[i,j,k,:].cuda(),bias.data[j]).cuda()
+	#return output
+	'''print("writing output_fixed.txt")
+	f = open('output_fixed.txt','w+')
+	for i in output[0:10]:
+		for j in i:
+			print(j,file = f)'''
+	return output.cuda()
+
+def FixedPointFC(input, layer):
+	weight, bias = layer.parameters()
+	weight = torch.transpose(weight, 0, 1)
+	output = torch.addmm(bias, input.cuda(), weight)
+	#weight = torch.transpose(weight, 0, 1)
+	#output = torch.mm(input.cuda(),weight.cuda()).cuda()
+	#output = torch.add(output.cuda(), bias.cuda()).cuda()
+	return output.cuda()
 
 class Net(nn.Module):
 	def __init__(self):
@@ -78,16 +138,53 @@ class Net(nn.Module):
 		self.fc1 = nn.Linear(320, 50)
 		self.fc2 = nn.Linear(50, 10)
 
-	def forward(self, x):
-		y = x
-		y = FixedPointConv(y, 1, 10, 5)
-		return x
+	'''def forward(self, x):
+		#y = x
+		#y = FixedPointConv(y, 1, 10, 5, self.conv1)
+		#return x
 		x = F.relu(F.max_pool2d(self.conv1(x), 2))
+		y = x
+		y = FixedPointConv(y, 10, 20, 5, self.conv2)
+		return x
 		x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
 		x = x.view(-1, 320)
 		x = F.relu(self.fc1(x))
 		x = F.dropout(x, training=self.training)
-		x = self.fc2(x)
+		x = self.fc2(x)'''
+
+	def forward(self, x):
+		#x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		
+		x = FixedPointConv(x, 1, 10, 5, self.conv1)
+		#x = self.conv1(x)
+
+		x = F.max_pool2d(x,2)
+		x = F.relu(x)
+		
+		x = FixedPointConv(x, 10, 20, 5, self.conv2)
+		#x = self.conv2(x)
+		
+		'''f = open('output.txt','w')
+		for i in x:
+			for j in i:
+				print(j,file = f)
+		f.close()'''
+		x = self.conv2_drop(x)
+		x = F.max_pool2d(x, 2)
+		x = F.relu(x)
+
+		x = x.view(-1, 320)
+
+		x = FixedPointFC(x, self.fc1)
+		#x = self.fc1(x)
+		
+		x = F.relu(x)
+
+		x = F.dropout(x, training=self.training)
+		
+		x = FixedPointFC(x, self.fc2)
+		#x = self.fc2(x)
+
 		return F.log_softmax(x)
 
 model = Net()
@@ -129,18 +226,17 @@ def test():
 		correct += pred.eq(target.data.view_as(pred)).cpu().sum()
 
 	test_loss /= len(test_loader.dataset)
-#	print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-#		test_loss, correct, len(test_loader.dataset),
-#		100. * correct / len(test_loader.dataset)))
-	f = open("record1.txt", 'a+')
-	print('{}'.format(correct), end='\t',file = f)
+	print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+		test_loss, correct, len(test_loader.dataset),
+		100. * correct / len(test_loader.dataset)))
+#	f = open("record1.txt", 'a+')
+#	print('{}'.format(correct), end='\t',file = f)
 	#f.write(str(correct),end='\t')
-	f.close()
+#	f.close()
 
 
 #for epoch in range(1, args.epochs + 1):
 global is_testing
-#f = open('record1.txt', 'a+')
 is_testing = 0
 if args.load == 0:
 	train(epoch)
@@ -157,4 +253,3 @@ elif args.load == 5:
 
 is_testing = 1
 test()
-#f.close()
