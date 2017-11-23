@@ -67,52 +67,27 @@ def gaussian(ins, stddev=args.std):
 
 def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0):
 	outputsize = int((input.size()[2]-kernel_size+2*padding)/stride + 1)
-	#print(outputsize)
-	#print(input.size())
-	#print(input.data()[0,0,0:2,0:2])
 	input.cuda()
 	weight, bias = layer.parameters()
 	weight.cuda()
 	bias.cuda()
 	output = torch.FloatTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
 	output = output.cuda()
-	#print(output.size())
-	#print(input.size()[0], 10, outputsize, outputsize)
-	#for i in range(0,input.size()[0]): #0 to 9999
 	for i in range(0,50):
-		for j in range(0,weight.size()[0]): # 0 to 9
+		for j in range(0,weight.size()[0]): 
 			for k in range(0,outputsize):
 				for l in range(0, outputsize):
 					a_1 = k*stride
 					a_2 = a_1 + kernel_size
 					b_1 = l*stride 
 					b_2 = b_1 + kernel_size
-					#if weight.size()[0] == 20:
-						#print(weight[j,:,:,:].size())
-						#print(input[i,:,a_1:a_2,b_1:b_2].size())
 					sum = 0
 					for m in range(0,weight.size()[1]):
-						#print(weight[j,m,:,:].size())
-						#print(input[i,m,a_1:a_2,b_1:b_2].size())
-						#if weight.size()[0] == 20:
-							#print(weight[j,m,:,:].size())
-							#print(input[i,m,a_1:a_2,b_1:b_2].size())
 						tmp = torch.mul(weight[j,m,:,:], input[i,m,a_1:a_2,b_1:b_2]).cuda()
 						tmp = tmp.view(-1,1)
 						sum = torch.add(torch.sum(tmp),sum).cuda()
-					#print(tmp.size())
-					#tmp = tmp.view(-1,1)
-					#tmp = torch.round(tmp / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
-					#tmp = torch.sum(tmp).cuda()
 					output[i,j,k,l] = sum.data[0]
-					#output[i,j,k,l] = torch.add(output[i,j,k,l],bias.data[j])
-					#print(filter.size())
-					#tmp = torch.mul(bias[j], filter)
-					#tmp = tmp.view(1)
-					#print(tmp.size())
-					#output[i,j,k,l]
 				output[i,j,k,:] = torch.add(output[i,j,k,:].cuda(),bias.data[j]).cuda()
-	#return output
 	'''print("writing output_fixed.txt")
 	f = open('output_fixed.txt','w+')
 	for i in output[0:10]:
@@ -124,9 +99,6 @@ def FixedPointFC(input, layer):
 	weight, bias = layer.parameters()
 	weight = torch.transpose(weight, 0, 1)
 	output = torch.addmm(bias, input.cuda(), weight)
-	#weight = torch.transpose(weight, 0, 1)
-	#output = torch.mm(input.cuda(),weight.cuda()).cuda()
-	#output = torch.add(output.cuda(), bias.cuda()).cuda()
 	return output.cuda()
 
 class Net(nn.Module):
