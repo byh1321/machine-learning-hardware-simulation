@@ -69,8 +69,10 @@ def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0
 	outputsize = int((input.size()[2]-kernel_size+2*padding)/stride + 1)
 	weight, bias = layer.parameters()
 	weight = weight.type('torch.cuda.ShortTensor') 
+	weight = weight.type('torch.cuda.FloatTensor') 
 	bias = bias.type('torch.cuda.ShortTensor') 
-	output = torch.cuda.ShortTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
+	bias = bias.type('torch.cuda.FloatTensor') 
+	output = torch.cuda.FloatTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
 	#for i in range(0,input.size()[0]):
 	for i in range(0,20):
 		for j in range(0,weight.size()[0]): 
@@ -86,6 +88,8 @@ def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0
 						tmp = tmp.view(-1,1)
 						sum = torch.add(torch.sum(tmp),sum).cuda()
 					output[i,j,k,l] = sum.data[0]
+				output = output.type('torch.cuda.ShortTensor') 
+				output = output.type('torch.cuda.FloatTensor') 
 				output[i,j,k,:] = torch.add(output[i,j,k,:].cuda(),bias.data[j]).cuda()
 	return output.cuda()
 
@@ -94,12 +98,16 @@ def FixedPointFC(input, layer):
 	weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 	bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 	weight = weight.type('torch.cuda.ShortTensor')
-	bias = bias.type('torch.cuda.ShortTensor')
+	weight = weight.type('torch.cuda.FloatTensor') 
+	bias = bias.type('torch.cuda.ShortTensor') 	
+	bias = bias.type('torch.cuda.FloatTensor')
 	weight = torch.transpose(weight, 0, 1)
 	input = torch.round(input / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 	output = torch.mm(input.cuda(),weight)
 	output = torch.round(output / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 	output = torch.add(output, bias)
+	output = output.type('torch.cuda.ShortTensor') 
+	output = output.type('torch.cuda.FloatTensor') 
 	return output.cuda()
 
 class Net(nn.Module):
@@ -118,14 +126,11 @@ class Net(nn.Module):
 		conv1_output = x
 		#x = self.conv1(x)
 		
-		x = x.type('torch.cuda.FloatTensor')
 		x = F.max_pool2d(x,2)
 		x = F.relu(x)
-		x = x.type('torch.cuda.ShortTensor')
 		conv2_input = x
 		x = FixedPointConv(x, 10, 20, 5, self.conv2)
 		conv2_output = x
-		x = x.type('torch.cuda.FloatTensor')
 		#x = self.conv2(x)
 		
 		x = self.conv2_drop(x)
@@ -133,20 +138,16 @@ class Net(nn.Module):
 		x = F.relu(x)
 
 		x = x.view(-1, 320)
-		x = x.type('torch.cuda.ShortTensor')
 		fc1_input = x
 		x = FixedPointFC(x, self.fc1)
 		fc1_output = x
 		#x = self.fc1(x)
-		x = x.type('torch.cuda.FloatTensor')
 		x = F.relu(x)
 
 		x = F.dropout(x, training=self.training)
-		x = x.type('torch.cuda.ShortTensor')
 		fc2_input = x
 		x = FixedPointFC(x, self.fc2)
 		fc2_output = x
-		bias = bias.type('torch.cuda.FloatTensor')
 		#x = self.fc2(x)
 
 		return (F.log_softmax(x),conv1_input,conv1_output,conv2_input,conv2_output, fc1_input, fc1_output, fc2_input, fc2_output)
@@ -186,14 +187,11 @@ def test():
 		data, target = Variable(data, volatile=True), Variable(target)
 		(output,conv1_input,conv1_output,conv2_input,conv2_output,
 			fc1_input, fc1_output, fc2_input, fc2_output) = model(data)
-		'''f = open('conv1_input_fixed.txt','w+')
+		f = open('conv1_input_fixed.txt','w+')
 		for i in conv1_input[0:30,:,:,:]:
 			for j in i:
-				for k in j:
-					#print(k,file = f)
-					#print("{0:.10f}".format(k), file=f)
-					print("{:.10f}".format(str(k)), file=f)
-		f.close()'''
+				print(j,file = f)
+		f.close()
 		'''f = open('conv1_output_fixed.txt','w+')
 		for i in conv1_output:
 			for j in i:
