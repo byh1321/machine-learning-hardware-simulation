@@ -67,14 +67,10 @@ def gaussian(ins, stddev=args.std):
 
 def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0):
 	outputsize = int((input.size()[2]-kernel_size+2*padding)/stride + 1)
-	input.cuda()
 	weight, bias = layer.parameters()
-	weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
-	bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
-	weight.cuda()
-	bias.cuda()
-	output = torch.FloatTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
-	output = output.cuda()
+	weight = weight.type('torch.cuda.ShortTensor') 
+	bias = bias.type('torch.cuda.ShortTensor') 
+	output = torch.cuda.ShortTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
 	#for i in range(0,input.size()[0]):
 	for i in range(0,20):
 		for j in range(0,weight.size()[0]): 
@@ -88,7 +84,6 @@ def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0
 					for m in range(0,weight.size()[1]):
 						tmp = torch.mul(weight[j,m,:,:], input[i,m,a_1:a_2,b_1:b_2]).cuda()
 						tmp = tmp.view(-1,1)
-						tmp = torch.round(tmp / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 						sum = torch.add(torch.sum(tmp),sum).cuda()
 					output[i,j,k,l] = sum.data[0]
 				output[i,j,k,:] = torch.add(output[i,j,k,:].cuda(),bias.data[j]).cuda()
@@ -98,6 +93,8 @@ def FixedPointFC(input, layer):
 	weight, bias = layer.parameters()
 	weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 	bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+	weight = weight.type('torch.cuda.ShortTensor')
+	bias = bias.type('torch.cuda.ShortTensor')
 	weight = torch.transpose(weight, 0, 1)
 	input = torch.round(input / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 	output = torch.mm(input.cuda(),weight)
@@ -115,17 +112,20 @@ class Net(nn.Module):
 		self.fc2 = nn.Linear(50, 10)
 
 	def forward(self, x):
-		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		#x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 		conv1_input = x
 		x = FixedPointConv(x, 1, 10, 5, self.conv1)
 		conv1_output = x
 		#x = self.conv1(x)
-
+		
+		x = x.type('torch.cuda.FloatTensor')
 		x = F.max_pool2d(x,2)
 		x = F.relu(x)
+		x = x.type('torch.cuda.ShortTensor')
 		conv2_input = x
 		x = FixedPointConv(x, 10, 20, 5, self.conv2)
 		conv2_output = x
+		x = x.type('torch.cuda.FloatTensor')
 		#x = self.conv2(x)
 		
 		x = self.conv2_drop(x)
@@ -133,21 +133,24 @@ class Net(nn.Module):
 		x = F.relu(x)
 
 		x = x.view(-1, 320)
-
+		x = x.type('torch.cuda.ShortTensor')
 		fc1_input = x
 		x = FixedPointFC(x, self.fc1)
 		fc1_output = x
 		#x = self.fc1(x)
-		
+		x = x.type('torch.cuda.FloatTensor')
 		x = F.relu(x)
 
 		x = F.dropout(x, training=self.training)
+		x = x.type('torch.cuda.ShortTensor')
 		fc2_input = x
 		x = FixedPointFC(x, self.fc2)
 		fc2_output = x
+		bias = bias.type('torch.cuda.FloatTensor')
 		#x = self.fc2(x)
 
 		return (F.log_softmax(x),conv1_input,conv1_output,conv2_input,conv2_output, fc1_input, fc1_output, fc2_input, fc2_output)
+
 model = Net()
 #noise = DynamicGNoise(10,10)
 #print(len(noise))
@@ -183,12 +186,15 @@ def test():
 		data, target = Variable(data, volatile=True), Variable(target)
 		(output,conv1_input,conv1_output,conv2_input,conv2_output,
 			fc1_input, fc1_output, fc2_input, fc2_output) = model(data)
-		f = open('conv1_input_fixed.txt','w+')
-		for i in conv1_input:
+		'''f = open('conv1_input_fixed.txt','w+')
+		for i in conv1_input[0:30,:,:,:]:
 			for j in i:
-				print(j,file = f)
-		f.close()
-		f = open('conv1_output_fixed.txt','w+')
+				for k in j:
+					#print(k,file = f)
+					#print("{0:.10f}".format(k), file=f)
+					print("{:.10f}".format(str(k)), file=f)
+		f.close()'''
+		'''f = open('conv1_output_fixed.txt','w+')
 		for i in conv1_output:
 			for j in i:
 				print(j,file = f)
@@ -218,7 +224,7 @@ def test():
 		f = open('fc2_output_fixed.txt','w+')
 		for i in fc2_output:
 			print(i,file = f)
-		f.close()
+		f.close()'''
 
 		test_loss += F.nll_loss(output, target, size_average=False).data[0] # sum up batch loss
 		pred = output.data.max(1, keepdim=True)[1] # get the index of the max log-probability
