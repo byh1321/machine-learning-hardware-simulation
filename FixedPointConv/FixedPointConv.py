@@ -65,15 +65,25 @@ def gaussian(ins, stddev=args.std):
 		return ins + Variable(torch.randn(ins.size()).cuda() * stddev)
 	return ins
 
+def round_max(input):
+	maximum = 2**args.pprec-1
+	minimum = -maximum-1
+	input = F.relu(torch.add(input, -minimum))
+	input = F.relu(torch.add(torch.neg(input), maximum-minimum))
+	input = torch.add(torch.neg(input), maximum)
+	return input	
+
 def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0):
 	outputsize = int((input.size()[2]-kernel_size+2*padding)/stride + 1)
 	input.cuda()
 	weight, bias = layer.parameters()
+	weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+	bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 	weight.cuda()
 	bias.cuda()
 	output = torch.FloatTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
 	output = output.cuda()
-	for i in range(0,50):
+	for i in range(0,input.size()[0]):
 		for j in range(0,weight.size()[0]): 
 			for k in range(0,outputsize):
 				for l in range(0, outputsize):
@@ -85,9 +95,11 @@ def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0
 					for m in range(0,weight.size()[1]):
 						tmp = torch.mul(weight[j,m,:,:], input[i,m,a_1:a_2,b_1:b_2]).cuda()
 						tmp = tmp.view(-1,1)
+						tmp = round_max(tmp)
 						sum = torch.add(torch.sum(tmp),sum).cuda()
 					output[i,j,k,l] = sum.data[0]
 				output[i,j,k,:] = torch.add(output[i,j,k,:].cuda(),bias.data[j]).cuda()
+				tmp = round_max(tmp)
 	'''print("writing output_fixed.txt")
 	f = open('output_fixed.txt','w+')
 	for i in output[0:10]:
@@ -97,8 +109,14 @@ def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0
 
 def FixedPointFC(input, layer):
 	weight, bias = layer.parameters()
+	weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+	bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+	weight = round_max(weight)
+	bias = round_max(bias)
 	weight = torch.transpose(weight, 0, 1)
+	input = torch.round(input / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 	output = torch.addmm(bias, input.cuda(), weight)
+	output = round_max(output)
 	return output.cuda()
 
 class Net(nn.Module):
@@ -110,22 +128,8 @@ class Net(nn.Module):
 		self.fc1 = nn.Linear(320, 50)
 		self.fc2 = nn.Linear(50, 10)
 
-	'''def forward(self, x):
-		#y = x
-		#y = FixedPointConv(y, 1, 10, 5, self.conv1)
-		#return x
-		x = F.relu(F.max_pool2d(self.conv1(x), 2))
-		y = x
-		y = FixedPointConv(y, 10, 20, 5, self.conv2)
-		return x
-		x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-		x = x.view(-1, 320)
-		x = F.relu(self.fc1(x))
-		x = F.dropout(x, training=self.training)
-		x = self.fc2(x)'''
-
 	def forward(self, x):
-		#x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 		
 		x = FixedPointConv(x, 1, 10, 5, self.conv1)
 		#x = self.conv1(x)
@@ -136,11 +140,6 @@ class Net(nn.Module):
 		x = FixedPointConv(x, 10, 20, 5, self.conv2)
 		#x = self.conv2(x)
 		
-		'''f = open('output.txt','w')
-		for i in x:
-			for j in i:
-				print(j,file = f)
-		f.close()'''
 		x = self.conv2_drop(x)
 		x = F.max_pool2d(x, 2)
 		x = F.relu(x)
@@ -160,8 +159,6 @@ class Net(nn.Module):
 		return F.log_softmax(x)
 
 model = Net()
-#noise = DynamicGNoise(10,10)
-#print(len(noise))
 
 if args.cuda:
 	model.cuda()
