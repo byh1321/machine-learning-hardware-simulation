@@ -35,6 +35,8 @@ parser.add_argument('--pprec', type=int, default=0, metavar='N',
 					help='parameter precision for layer weight')
 parser.add_argument('--aprec', type=int, default=0, metavar='N',
 					help='Arithmetic precision for internal arithmetic')
+parser.add_argument('--iwidth', type=int, default=10, metavar='N',help='integer bitwidth for internal part')
+torch.set_printoptions(precision=10)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -65,49 +67,67 @@ def gaussian(ins, stddev=args.std):
 		return ins + Variable(torch.randn(ins.size()).cuda() * stddev)
 	return ins
 
+def round_max(input):
+	maximum = 2**args.iwidth-1
+	minimum = -maximum-1
+	input = F.relu(torch.add(input, -minimum))
+	input = F.relu(torch.add(torch.neg(input), maximum-minimum))
+	input = torch.add(torch.neg(input), maximum)
+	return input	
+
 def FixedPointConv(input, ins, outs, kernel_size, layer, stride = 1, padding = 0):
 	outputsize = int((input.size()[2]-kernel_size+2*padding)/stride + 1)
+	input.cuda()
 	weight, bias = layer.parameters()
-	weight = weight.type('torch.cuda.ShortTensor') 
-	weight = weight.type('torch.cuda.FloatTensor') 
-	bias = bias.type('torch.cuda.ShortTensor') 
-	bias = bias.type('torch.cuda.FloatTensor') 
-	output = torch.cuda.FloatTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
+	weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+	bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+	#print(weight[0,0,0:5,0:5])
+	#print(bias)
+	#print(input[0,0,0:5,0:5])
+	weight.cuda()
+	bias.cuda()
+	output = torch.FloatTensor(input.size()[0],weight.size()[0],outputsize,outputsize).zero_()
+	output = output.cuda()
 	#for i in range(0,input.size()[0]):
-	for i in range(0,20):
-		for j in range(0,weight.size()[0]): 
-			for k in range(0,outputsize):
-				for l in range(0, outputsize):
+	for i in range(0,1): #Which image do you wanna use
+		for j in range(0,weight.size()[0]): #Which filter do you wanna use
+			for k in range(0,outputsize): #feature row index
+				for l in range(0, outputsize): #feature column index
 					a_1 = k*stride
 					a_2 = a_1 + kernel_size
 					b_1 = l*stride 
 					b_2 = b_1 + kernel_size
 					sum = 0
-					for m in range(0,weight.size()[1]):
+					for m in range(0,weight.size()[1]): # Have to repeat filter convoultion for thickness of filter times.
 						tmp = torch.mul(weight[j,m,:,:], input[i,m,a_1:a_2,b_1:b_2]).cuda()
 						tmp = tmp.view(-1,1)
-						sum = torch.add(torch.sum(tmp),sum).cuda()
+						tmp = torch.round(tmp / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+						tmp = round_max(tmp)
+						sum = torch.add(torch.sum(tmp),sum).cuda() # Accumulating 2D filter convoultion values
 					output[i,j,k,l] = sum.data[0]
-				output = output.type('torch.cuda.ShortTensor') 
-				output = output.type('torch.cuda.FloatTensor') 
+					flag = 0
 				output[i,j,k,:] = torch.add(output[i,j,k,:].cuda(),bias.data[j]).cuda()
+				tmp = round_max(tmp)
+				tmp = torch.round(tmp / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+	'''print("writing output_fixed.txt")
+	f = open('output_fixed.txt','w+')
+	for i in output[0:10]:
+		for j in i:
+			print(j,file = f)'''
 	return output.cuda()
 
 def FixedPointFC(input, layer):
 	weight, bias = layer.parameters()
 	weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 	bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
-	weight = weight.type('torch.cuda.ShortTensor')
-	weight = weight.type('torch.cuda.FloatTensor') 
-	bias = bias.type('torch.cuda.ShortTensor') 	
-	bias = bias.type('torch.cuda.FloatTensor')
+	weight = round_max(weight)
+	bias = round_max(bias)
 	weight = torch.transpose(weight, 0, 1)
 	input = torch.round(input / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
-	output = torch.mm(input.cuda(),weight)
+	input = round_max(input)
+	output = torch.addmm(bias, input.cuda(), weight)
+	output = round_max(output)
 	output = torch.round(output / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
-	output = torch.add(output, bias)
-	output = output.type('torch.cuda.ShortTensor') 
-	output = output.type('torch.cuda.FloatTensor') 
 	return output.cuda()
 
 class Net(nn.Module):
@@ -120,16 +140,27 @@ class Net(nn.Module):
 		self.fc2 = nn.Linear(50, 10)
 
 	def forward(self, x):
-		#x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
 		conv1_input = x
+		print("conv1_input size : ",x.size())
 		x = FixedPointConv(x, 1, 10, 5, self.conv1)
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		print("conv1_output size : ",x.size())
 		conv1_output = x
 		#x = self.conv1(x)
 		
 		x = F.max_pool2d(x,2)
 		x = F.relu(x)
+
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		print("conv2_input size : ",x.size())
 		conv2_input = x
+
 		x = FixedPointConv(x, 10, 20, 5, self.conv2)
+
+	
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		print("conv2_output size : ",x.size())
 		conv2_output = x
 		#x = self.conv2(x)
 		
@@ -138,19 +169,65 @@ class Net(nn.Module):
 		x = F.relu(x)
 
 		x = x.view(-1, 320)
+		
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		print("fc1_input size : ",x.size())
 		fc1_input = x
 		x = FixedPointFC(x, self.fc1)
+		
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		print("fc1_output size : ",x.size())
 		fc1_output = x
 		#x = self.fc1(x)
 		x = F.relu(x)
 
 		x = F.dropout(x, training=self.training)
+		
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		print("fc2_input size : ",x.size())
 		fc2_input = x
 		x = FixedPointFC(x, self.fc2)
+		
+		x = torch.round(x / (2 ** (-args.aprec))) * (2 ** (-args.aprec))
+		print("fc2_output size : ",x.size())
 		fc2_output = x
 		#x = self.fc2(x)
 
 		return (F.log_softmax(x),conv1_input,conv1_output,conv2_input,conv2_output, fc1_input, fc1_output, fc2_input, fc2_output)
+
+	def extract_weight(self):
+		f = open('conv1_param_fixed.txt','w')
+		weight, bias = self.conv1.parameters()
+		for i in range(0,weight.size()[0]):
+			for j in range(0,weight.size()[1]):
+				for k in range(0,weight.size()[2]):
+					for l in range(0,weight.size()[3]):
+						print(weight[i,j,k,l].data[0],file = f)
+		print(bias, file=f)
+		f.close()
+		f = open('conv2_param_fixed.txt','w')
+		weight, bias = self.conv2.parameters()
+		for i in range(0,weight.size()[0]):
+			for j in range(0,weight.size()[1]):
+				for k in range(0,weight.size()[2]):
+					for l in range(0,weight.size()[3]):
+						print(weight[i,j,k,l].data[0],file = f)
+		print(bias, file=f)
+		f.close()
+		f = open('fc1_param_fixed.txt','w')
+		weight, bias = self.fc1.parameters()
+		for i in range(0,weight.size()[0]):
+			for j in range(0,weight.size()[1]):
+				print(weight[i,j].data[0],file = f)
+		print(bias, file=f)
+		f.close()
+		f = open('fc2_param_fixed.txt','w')
+		weight, bias = self.fc2.parameters()
+		for i in range(0,weight.size()[0]):
+			for j in range(0,weight.size()[1]):
+				print(weight[i,j].data[0],file = f)
+		print(bias, file=f)
+		f.close()
 
 model = Net()
 #noise = DynamicGNoise(10,10)
@@ -187,43 +264,119 @@ def test():
 		data, target = Variable(data, volatile=True), Variable(target)
 		(output,conv1_input,conv1_output,conv2_input,conv2_output,
 			fc1_input, fc1_output, fc2_input, fc2_output) = model(data)
-		f = open('conv1_input_fixed.txt','w+')
-		for i in conv1_input[0:30,:,:,:]:
-			for j in i:
-				print(j,file = f)
+		'''f = open('conv1_input_fixed.txt','w+')
+		out = conv1_input[0].view(-1,1)
+		print(out.data[:],file = f)
 		f.close()
-		'''f = open('conv1_output_fixed.txt','w+')
-		for i in conv1_output:
-			for j in i:
-				print(j,file = f)
+		f = open('conv1_output_fixed.txt','w+')
+		out = conv1_output[0].view(-1,1)
+		print(out,file = f)
 		f.close()
 		f = open('conv2_input_fixed.txt','w+')
-		for i in conv2_input:
-			for j in i:
-				print(j,file = f)
+		out = conv2_input[0].view(-1,1)
+		print(out.data[:],file = f)
 		f.close()
 		f = open('conv2_output_fixed.txt','w+')
-		for i in conv2_output:
-			for j in i:
-				print(j,file = f)
+		out = conv2_output[0].view(-1,1)
+		print(out,file = f)
 		f.close()
 		f = open('fc1_input_fixed.txt','w+')
-		for i in fc1_input:
-			print(i,file = f)
+		out = fc1_input[0].view(-1,1)
+		print(out.data[:],file = f)
 		f.close()
 		f = open('fc1_output_fixed.txt','w+')
-		for i in fc1_input:
-			print(i,file = f)
+		out = fc1_output[0].view(-1,1)
+		print(out,file = f)
 		f.close()
 		f = open('fc2_input_fixed.txt','w+')
-		for i in fc2_input:
-			print(i,file = f)
+		out = fc2_input[0].view(-1,1)
+		print(out.data[:],file = f)
 		f.close()
 		f = open('fc2_output_fixed.txt','w+')
-		for i in fc2_output:
-			print(i,file = f)
+		out = fc2_output[0].view(-1,1)
+		print(out,file = f)		
 		f.close()'''
+		
+		f = open('conv1_input_fixed.txt','w+')
+		for j in range(0,conv1_input.size()[1]):
+			for k in range(0,conv1_input.size()[2]):
+				for l in range(0,conv1_input.size()[3]):
+					print(conv1_input[0,j,k,l].data[0],file=f)
+		f.close()
+		f = open('conv1_output_fixed.txt','w+')
+		for j in range(0,conv1_output.size()[1]):
+			for k in range(0,conv1_output.size()[2]):
+				for l in range(0,conv1_output.size()[3]):
+					print(conv1_output[0,j,k,l],file=f)
+		f.close()
+		f = open('conv2_input_fixed.txt','w+')
+		for j in range(0,conv2_input.size()[1]):
+			for k in range(0,conv2_input.size()[2]):
+				for l in range(0,conv2_input.size()[3]):
+					print(conv2_input[0,j,k,l].data[0],file=f)
+		f.close()
+		f = open('conv2_output_fixed.txt','w+')
+		for j in range(0,conv2_output.size()[1]):
+			for k in range(0,conv2_output.size()[2]):
+				for l in range(0,conv2_output.size()[3]):
+					print(conv2_output[0,j,k,l],file=f)
+		f.close()
+		f = open('fc1_input_fixed.txt','w+')
+		for i in range(0,fc1_input.size()[0]):
+			for j in range(0,fc1_input.size()[1]):
+				print(fc1_input[i,j].data[0],file=f)
+		f.close()
+		f = open('fc1_output_fixed.txt','w+')
+		for i in range(0,fc1_output.size()[0]):
+			for j in range(0,fc1_output.size()[1]):
+				print(fc1_output[i,j].data[0],file=f)
+		f.close()
+		f = open('fc2_input_fixed.txt','w+')
+		for i in range(0,fc2_input.size()[0]):
+			for j in range(0,fc2_input.size()[1]):
+				print(fc2_input[i,j].data[0],file=f)
+		f.close()
+		f = open('fc2_output_fixed.txt','w+')
+		for i in range(0,fc2_output.size()[0]):
+			for j in range(0,fc2_output.size()[1]):
+				print(fc2_output[i,j].data[0],file=f)
+		f.close()
 
+		'''f = open('conv1_input_fixed.txt','w+')
+		for i in conv1_input[0]:
+			print(i,file = f)
+		f.close()
+		f = open('conv1_output_fixed.txt','w+')
+		for i in conv1_output[0]:
+			print(i,file = f)
+		f.close()
+		f = open('conv2_input_fixed.txt','w+')
+		for i in conv2_input[0]:
+			print(i,file = f)
+		f.close()
+		f = open('conv2_output_fixed.txt','w+')
+		for i in conv2_output[0]:
+			print(i,file = f)
+		f.close()
+		f = open('fc1_input_fixed.txt','w+')
+		#for i in fc1_input:
+		print(fc1_input[0].data,file = f)
+		f.close()
+		f = open('fc1_output_fixed.txt','w+')
+		#for i in fc1_input:
+		#	print(i,file = f)
+		print(fc1_output[0].data,file = f)
+		f.close()
+		f = open('fc2_input_fixed.txt','w+')
+		#for i in fc2_input:
+		#	print(i,file = f)
+		print(fc2_input[0].data,file = f)
+		f.close()
+		f = open('fc2_output_fixed.txt','w+')
+		#for i in fc2_output:
+		#	print(i,file = f)
+		print(fc2_output[0].data,file = f)
+		f.close()'''
 		test_loss += F.nll_loss(output, target, size_average=False).data[0] # sum up batch loss
 		pred = output.data.max(1, keepdim=True)[1] # get the index of the max log-probability
 		correct += pred.eq(target.data.view_as(pred)).cpu().sum()
@@ -232,13 +385,19 @@ def test():
 	print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
 		test_loss, correct, len(test_loader.dataset),
 		100. * correct / len(test_loader.dataset)))
-#	f = open("record1.txt", 'a+')
-#	print('{}'.format(correct), end='\t',file = f)
-	#f.write(str(correct),end='\t')
-#	f.close()
+
+pprec = args.pprec
+for param in model.conv1.parameters():
+	param.data = torch.round(param.data / (2 ** -(pprec))) * (2 ** -(pprec))
+for param in model.conv2.parameters():
+	param.data = torch.round(param.data / (2 ** -(pprec))) * (2 ** -(pprec))
+
+for param in model.fc1.parameters():
+	param.data = torch.round(param.data / (2 ** -(pprec))) * (2 ** -(pprec))
+for param in model.fc2.parameters():
+	param.data = torch.round(param.data / (2 ** -(pprec))) * (2 ** -(pprec))
 
 
-#for epoch in range(1, args.epochs + 1):
 global is_testing
 is_testing = 0
 if args.load == 0:
@@ -253,6 +412,6 @@ elif args.load == 4:
 	model = torch.load('test4.dat')
 elif args.load == 5:
 	model = torch.load('test5.dat')
-
+model.extract_weight()
 is_testing = 1
 test()
