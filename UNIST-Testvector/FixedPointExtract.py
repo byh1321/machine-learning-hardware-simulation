@@ -198,6 +198,8 @@ class Net(nn.Module):
 	def extract_weight(self):
 		f = open('conv1_param_fixed.txt','w')
 		weight, bias = self.conv1.parameters()
+		weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+		bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 		for i in range(0,weight.size()[0]):
 			for j in range(0,weight.size()[1]):
 				for k in range(0,weight.size()[2]):
@@ -207,6 +209,8 @@ class Net(nn.Module):
 		f.close()
 		f = open('conv2_param_fixed.txt','w')
 		weight, bias = self.conv2.parameters()
+		weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+		bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 		for i in range(0,weight.size()[0]):
 			for j in range(0,weight.size()[1]):
 				for k in range(0,weight.size()[2]):
@@ -216,6 +220,8 @@ class Net(nn.Module):
 		f.close()
 		f = open('fc1_param_fixed.txt','w')
 		weight, bias = self.fc1.parameters()
+		weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+		bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 		for i in range(0,weight.size()[0]):
 			for j in range(0,weight.size()[1]):
 				print(weight[i,j].data[0],file = f)
@@ -223,6 +229,8 @@ class Net(nn.Module):
 		f.close()
 		f = open('fc2_param_fixed.txt','w')
 		weight, bias = self.fc2.parameters()
+		weight = torch.round(weight / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
+		bias = torch.round(bias / (2 ** (-args.pprec))) * (2 ** (-args.pprec))
 		for i in range(0,weight.size()[0]):
 			for j in range(0,weight.size()[1]):
 				print(weight[i,j].data[0],file = f)
